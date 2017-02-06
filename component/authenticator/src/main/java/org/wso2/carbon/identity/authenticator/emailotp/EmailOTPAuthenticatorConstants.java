@@ -89,4 +89,10 @@ public class EmailOTPAuthenticatorConstants {
     public static final String SUPER_TENANT = "carbon.super";
     public static final String USER_NAME = "username";
     public static final String AUTHENTICATED_USER = "authenticatedUser";
+
+    // Time range to skip the authentication
+    public static final String TWO_STEP_TIME_START = "09:00:00";
+    public static final String TWO_STEP_TIME_END = "19:00:00";
+
+    public static final String TWO_STEP_REQUIRED_ROLE = "twostep";
 }

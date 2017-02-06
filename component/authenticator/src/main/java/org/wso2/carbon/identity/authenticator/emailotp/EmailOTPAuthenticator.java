@@ -29,11 +29,13 @@ import org.apache.commons.logging.LogFactory;
 import org.json.JSONObject;
 import org.wso2.carbon.extension.identity.helper.FederatedAuthenticator;
 import org.wso2.carbon.extension.identity.helper.util.IdentityHelperUtil;
+import org.wso2.carbon.identity.application.authentication.framework.AuthenticatorFlowStatus;
 import org.wso2.carbon.identity.application.authentication.framework.FederatedApplicationAuthenticator;
 import org.wso2.carbon.identity.application.authentication.framework.config.ConfigurationFacade;
 import org.wso2.carbon.identity.application.authentication.framework.context.AuthenticationContext;
 import org.wso2.carbon.identity.application.authentication.framework.exception.AuthenticationFailedException;
 import org.wso2.carbon.identity.application.authentication.framework.exception.InvalidCredentialsException;
+import org.wso2.carbon.identity.application.authentication.framework.exception.LogoutFailedException;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.authenticator.oidc.OIDCAuthenticatorConstants;
@@ -55,6 +57,7 @@ import org.wso2.carbon.identity.mgt.mail.NotificationBuilder;
 import org.wso2.carbon.identity.mgt.mail.NotificationData;
 import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.UserStoreException;
+import org.wso2.carbon.user.core.UserStoreManager;
 import org.wso2.carbon.user.core.service.RealmService;
 import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 
@@ -68,7 +71,11 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -91,6 +98,104 @@ public class EmailOTPAuthenticator extends OpenIDConnectAuthenticator implements
                 || StringUtils.isNotEmpty(request.getParameter(EmailOTPAuthenticatorConstants.CODE)));
     }
 
+    @Override
+    public AuthenticatorFlowStatus process(HttpServletRequest request, HttpServletResponse response,
+                                           AuthenticationContext context)
+            throws AuthenticationFailedException, LogoutFailedException {
+
+
+        if (timeBasedTwoStep() || roleBasedTwoStep(context)) {
+            AuthenticatorFlowStatus authenticatorFlowStatus = super.process(request, response, context);
+            return authenticatorFlowStatus;
+        } else {
+
+            AuthenticatedUser user = new AuthenticatedUser();
+            user.setAuthenticatedSubjectIdentifier("asdfda");
+            user.setUserName("dummy");
+            user.setTenantDomain("carbon.super");
+
+            context.setSubject(user);
+
+            return AuthenticatorFlowStatus.SUCCESS_COMPLETED;
+        }
+    }
+
+    /**
+     * Check whether the two step authentication is required based on time
+     * returns true if required
+     * returns false otherwise
+     */
+    private boolean timeBasedTwoStep() {
+
+        try {
+            Date startTime = new SimpleDateFormat("HH:mm:ss").parse(EmailOTPAuthenticatorConstants.TWO_STEP_TIME_START);
+            Calendar calendarStart = Calendar.getInstance();
+            calendarStart.setTime(startTime);
+            calendarStart.add(Calendar.DATE, 1);
+
+            Date endTime = new SimpleDateFormat("HH:mm:ss").parse(EmailOTPAuthenticatorConstants.TWO_STEP_TIME_END);
+            Calendar calendarEnd = Calendar.getInstance();
+            calendarEnd.setTime(endTime);
+            calendarEnd.add(Calendar.DATE, 1);
+
+            //Getting the current time neglecting the date
+            Date nowTime = new SimpleDateFormat("HH:mm:ss").parse(new SimpleDateFormat("HH:mm:ss").format(new Date()));
+            Calendar calendarNow = Calendar.getInstance();
+            calendarNow.setTime(nowTime);
+            calendarNow.add(Calendar.DATE, 1);
+
+            Date now = calendarNow.getTime();
+
+            if (now.before(calendarStart.getTime()) || now.after(calendarEnd.getTime())) {
+                return true;
+            }
+
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check whether the two step authentication is required based on user role
+     * returns true if required
+     * returns false otherwise
+     */
+    private boolean roleBasedTwoStep(AuthenticationContext context) {
+
+        String username = null;
+        try {
+            FederatedAuthenticator federatedAuthenticator = new FederatedAuthenticator();
+            federatedAuthenticator.getUsernameFromFirstStep(context);
+
+            username = String.valueOf(context.getProperty(EmailOTPAuthenticatorConstants.USER_NAME));
+            UserRealm realm = getUserRealm(username);
+
+            String[] usernameSplit = username.split("@", 2);
+            String tenantAwareUsername = usernameSplit[0];
+
+            UserStoreManager storeManager = realm.getUserStoreManager();
+            String[] userRoles = storeManager.getRoleListOfUser(tenantAwareUsername);
+
+            if (userRoles != null) {
+                for (int i = 0; i < userRoles.length; i++) {
+                    if (EmailOTPAuthenticatorConstants.TWO_STEP_REQUIRED_ROLE.equals(userRoles[i])) {
+                        return false;
+                    }
+                }
+            }
+        } catch (AuthenticationFailedException e) {
+            e.printStackTrace();
+            return true;
+        } catch (UserStoreException e) {
+            e.printStackTrace();
+            return true;
+        }
+        return true;
+    }
+
     /**
      * Initiate the authentication request
      */
@@ -99,6 +204,7 @@ public class EmailOTPAuthenticator extends OpenIDConnectAuthenticator implements
                                                  HttpServletResponse response, AuthenticationContext context)
             throws AuthenticationFailedException {
         try {
+
             String tenantAwareUsername = null;
             String username = null;
             AuthenticatedUser authenticatedUser;
@@ -221,6 +327,8 @@ public class EmailOTPAuthenticator extends OpenIDConnectAuthenticator implements
                     throw new AuthenticationFailedException(e.getMessage(), e);
                 }
             }
+
+
         } catch (UserStoreException e) {
             log.error("Cannot find the user claim for email", e);
             throw new AuthenticationFailedException("Cannot find the user claim for email " + e.getMessage(), e);
