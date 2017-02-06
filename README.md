@@ -1,5 +1,6 @@
-Welcome to the WSO2 Identity Server (IS) EmailOTP authenticator. 
+WSO2 IS Adaptive EmailOTP authenticator. 
 
-WSO2 IS is one of the best Identity Servers, which enables you to offload your identity and user entitlement management burden totally from your application. It comes with many features, supports many industry standards and most importantly it allows you to extent it according to your security requirements. This repo contains Authenticators written to work with different third party systems. 
+Time based two step authentication is where when user tries to login during a specified time period, the user should be allowed to login straight away. And at the rest of the time, the user should be authentication with a second step. Similarly in the role based, only a specific user group should be asked to login with a two step.
+As of now till WSO2IS 5.3.0 these adaptive authentication feature is not available as an out-of-the-box feature. But in this authenticator I was able to achieve these scenarios. 
 
-With WSO2 IS, there are lot of provisioning capabilities available. There are 3 major concepts as Inbound, outbound provisioning and Just-In-Time provisioning. Inbound provisioning means , provisioning users and groups from an external system to IS. Outbound provisioning means , provisioning users from IS to other external systems. JIT provisioning means , once a user tries to login from an external IDP, a user can be created on the fly in IS with JIT. Repos under this account holds such components invlove in communicating with external systems.
+I have taken the Email OTP (One Time Password) authenticator and modified to cater these requirements. So for a given time period the user is able to login with a single step and the remaining time period, the Email OTP is required to login. Also in the same authenticator, it checks the user role and asks the user to login with a two step for that particular role.
